@@ -1,0 +1,481 @@
+# **How to USE Your Deployed Audit Rules**
+
+Once your `hardening.rules` are deployed, here's exactly how to **USE** them for monitoring, investigation, and incident response:
+
+---
+
+## **📋 QUICK REFERENCE CARD**
+
+| **Action** | **Command** |
+|-----------|------------|
+| Check if rules are active | `sudo auditctl -l \| wc -l` |
+| Monitor live | `sudo tail -f /var/log/audit/audit.log` |
+| Search by key | `sudo ausearch -k ssh_keys` |
+| Today's events | `sudo ausearch -ts today \| aureport -f` |
+| User activity | `sudo aureport -u` |
+| Root commands | `sudo ausearch -k root_command` |
+
+---
+
+# **🔍 PART 1: SEARCHING & INVESTIGATING EVENTS**
+
+## **By Category (Using Keys)**
+
+Each rule has a `-k KEYNAME` tag. Use these to search:
+
+### **Identity & Authentication**
+```bash
+# Who changed user accounts?
+sudo ausearch -k identity -ts today
+
+# SSH key modifications?
+sudo ausearch -k ssh_keys -ts today
+
+# Failed logins
+sudo ausearch -k failed_logins -ts today | aureport -f
+
+# Sudo usage
+sudo ausearch -k privilege_escalation -ts today
+```
+
+### **File Activity**
+```bash
+# Files deleted today
+sudo ausearch -k file_deletion -ts today
+
+# Permission changes (chmod/chown)
+sudo ausearch -k perm_mod -ts today
+
+# Web directory changes
+sudo ausearch -k web_content -ts today
+
+# Temp directory abuse
+sudo ausearch -k tmp_watch -ts today
+```
+
+### **Commands & Processes**
+```bash
+# All commands executed
+sudo ausearch -k process_execution -ts today | less
+
+# Suspicious tools (curl, wget, nc)
+sudo ausearch -k lolbin -ts today
+
+# Root commands
+sudo ausearch -k root_command -ts today
+
+# Compiler usage (gcc, make)
+sudo ausearch -k compiler -ts today
+```
+
+### **Persistence & Backdoors**
+```bash
+# Cron job changes
+sudo ausearch -k cron -ts today
+
+# Systemd service modifications
+sudo ausearch -k systemd -ts today
+
+# Kernel module loading
+sudo ausearch -k kernel_module -ts today
+
+# SSH config changes
+sudo ausearch -k ssh_config -ts today
+```
+
+### **Network Activity**
+```bash
+# Outbound connections
+sudo ausearch -k outbound_connection -ts today
+
+# Listening services
+sudo ausearch -k socket_bind -ts today
+
+# Host file modifications
+sudo ausearch -k hosts -ts today
+```
+
+### **Anti-Forensics**
+```bash
+# Time changes (log tampering)
+sudo ausearch -k time_change -ts today
+
+# Log file modifications
+sudo ausearch -k audit_log -ts today
+
+# Bash history cleared
+sudo ausearch -k bash_history -ts today
+```
+
+---
+
+# **📊 PART 2: GENERATING REPORTS**
+
+## **Daily Security Reports**
+```bash
+#!/bin/bash
+# Save as: ~/audit-daily-report.sh
+
+echo "=== AUDIT REPORT $(date) ==="
+
+echo -e "\n▶️ Failed Logins:"
+sudo aureport -l --failed -ts today
+
+echo -e "\n▶️ Root Commands:"
+sudo ausearch -k root_command -ts today --format text | grep exe | tail -20
+
+echo -e "\n▶️ File Deletions:"
+sudo ausearch -k file_deletion -ts today | aureport -f | tail -10
+
+echo -e "\n▶️ Suspicious Tools:"
+sudo ausearch -k lolbin -ts today --format text | grep exe | tail -10
+
+echo -e "\n▶️ Permission Changes:"
+sudo ausearch -k perm_mod -ts today | aureport -f | tail -10
+
+echo -e "\n▶️ Cron Modifications:"
+sudo ausearch -k cron -ts today | grep -E "crontab|cron" | tail -10
+```
+
+**Run daily:** `sudo bash ~/audit-daily-report.sh`
+
+---
+
+## **User Activity Report**
+```bash
+# What did a specific user do?
+sudo aureport -u -i -ts today
+
+# Commands by user ID 1001
+sudo ausearch -ui 1001 -ts today -k process_execution | aureport -x
+
+# Files accessed by user
+sudo ausearch -ui 1001 -ts today | aureport -f
+```
+
+---
+
+## **File Integrity Report**
+```bash
+# Which critical files changed?
+sudo ausearch -k identity -ts today    # passwd/shadow
+sudo ausearch -k sudoers -ts today     # sudoers
+sudo ausearch -k ssh_config -ts today  # SSH
+
+# SUID changes (privilege escalation risk)
+sudo ausearch -k suid_change -ts today
+```
+
+---
+
+# **🚨 PART 3: INCIDENT RESPONSE SCENARIOS**
+
+## **Scenario 1: Suspicious SSH Activity**
+```bash
+# 1. Check SSH logins
+sudo aureport -l -ts today
+
+# 2. Check SSH key modifications
+sudo ausearch -k ssh_keys -ts today
+
+# 3. Check SSH config changes
+sudo ausearch -k ssh_config -ts today
+
+# 4. Commands run by SSH users
+sudo ausearch -m execve -ui $(whoami) -ts today
+
+# 5. Outbound connections from SSH session
+sudo ausearch -k outbound_connection -ts today | grep -B 5 sshd
+```
+
+## **Scenario 2: Possible Backdoor/Reverse Shell**
+```bash
+# 1. Check for LOLBin execution
+sudo ausearch -k lolbin -ts today
+
+# 2. Check outbound connections
+sudo ausearch -k outbound_connection -ts today
+
+# 3. Check for suspicious listening ports
+sudo ausearch -k socket_bind -ts today
+
+# 4. Check cron for persistence
+sudo ausearch -k cron -ts today
+
+# 5. Check systemd for new services
+sudo ausearch -k systemd -ts today | grep -E "created|enabled"
+```
+
+## **Scenario 3: Privilege Escalation Attempt**
+```bash
+# 1. Check sudo usage
+sudo ausearch -k privilege_escalation -ts today
+
+# 2. Check SUID binary execution
+sudo ausearch -k pkexec -k passwd -k su -ts today
+
+# 3. Check for failed root attempts
+sudo ausearch -m execve -ui 0 -sv no -ts today
+
+# 4. Check permission changes to 777
+sudo ausearch -k chmod_777 -ts today
+```
+
+## **Scenario 4: Data Exfiltration**
+```bash
+# 1. Check large file reads
+sudo ausearch -k web_content -ts today | grep open | grep -E "\.(sql|tar|gz|zip|db)"
+
+# 2. Check outbound connections
+sudo ausearch -k outbound_connection -ts today
+
+# 3. Check USB mounts
+sudo ausearch -k usb_mount -ts today
+
+# 4. Check compression tools
+sudo ausearch -k lolbin | grep -E "tar|gzip|zip|base64" -ts today
+```
+
+---
+
+# **📈 PART 4: MONITORING & ALERTS**
+
+## **Real-time Monitoring**
+```bash
+# Watch live audit log (monitor in real-time)
+sudo tail -f /var/log/audit/audit.log | grep --color=always -E "FAILED|DENIED|chmod 777|root"
+
+# Monitor specific keys in real-time
+sudo tail -f /var/log/audit/audit.log | grep "lolbin\|privilege_escalation\|kernel_module"
+```
+
+## **Create Simple Alerts**
+```bash
+# Create alert script
+sudo tee /usr/local/bin/audit-alerts.sh << 'EOF'
+#!/bin/bash
+
+# Alert on root commands
+if sudo ausearch -k root_command -ts recent -r > /dev/null; then
+    echo "ALERT: Root command executed" | mail -s "Audit Alert" admin@localhost
+fi
+
+# Alert on LOLBin usage
+if sudo ausearch -k lolbin -ts recent -r > /dev/null; then
+    echo "ALERT: Suspicious tool used" | mail -s "Audit Alert" admin@localhost
+fi
+
+# Alert on failed logins
+FAILED=$(sudo aureport -l --failed -ts recent | wc -l)
+if [ $FAILED -gt 10 ]; then
+    echo "ALERT: $FAILED failed logins" | mail -s "Brute Force Attempt?" admin@localhost
+fi
+EOF
+
+sudo chmod +x /usr/local/bin/audit-alerts.sh
+
+# Add to crontab (run every 5 minutes)
+sudo crontab -e
+# Add: */5 * * * * /usr/local/bin/audit-alerts.sh
+```
+
+---
+
+# **🎯 PART 5: TARGETED INVESTIGATIONS**
+
+## **Find Everything a User Did**
+```bash
+# Set the user you're investigating
+USERNAME="john"
+
+# Get their UID
+USERID=$(id -u $USERNAME)
+
+# All commands they ran
+sudo ausearch -ui $USERID -k process_execution -ts yesterday,00:00 | aureport -x
+
+# All files they accessed
+sudo ausearch -ui $USERID -ts yesterday,00:00 | aureport -f
+
+# When they logged in/out
+sudo aureport -l -i | grep $USERNAME
+
+# Sudo commands
+sudo ausearch -ui $USERID -k privilege_escalation
+```
+
+## **Find Everything on a File**
+```bash
+# Track a specific file
+FILENAME="/etc/passwd"
+
+# Who accessed it?
+sudo ausearch -f $FILENAME -ts today
+
+# What was done to it?
+sudo ausearch -f $FILENAME -ts today | aureport -f
+
+# When was it modified?
+sudo ausearch -f $FILENAME -ts today | grep -E "SYSCALL|PATH"
+```
+
+## **Find Everything at a Time**
+```bash
+# What happened at 3 AM?
+sudo ausearch -ts 03:00 -te 03:10
+
+# What happened during a specific hour?
+sudo ausearch -ts 14:00 -te 15:00
+
+# Weekend activity
+sudo ausearch -ts last-weekend | aureport --summary
+```
+
+---
+
+# **🛠️ PART 6: DAILY OPERATIONS**
+
+## **Morning Checklist**
+```bash
+# 1. Check audit status
+sudo auditctl -s
+
+# 2. Check disk space
+df -h /var/log/audit/
+
+# 3. Review overnight activity
+sudo aureport --summary -ts yesterday
+
+# 4. Check failed logins
+sudo aureport -l --failed -ts yesterday
+
+# 5. Check root activity
+sudo ausearch -k root_command -ts yesterday
+
+# 6. Check critical file changes
+sudo ausearch -k identity -k sudoers -k ssh_config -ts yesterday
+```
+
+## **Weekly Review**
+```bash
+# Top users
+sudo aureport -u -ts this-week | head -20
+
+# Top commands
+sudo aureport -x -ts this-week | head -20
+
+# Top files accessed
+sudo aureport -f -ts this-week | head -20
+
+# Anomalies (failed syscalls)
+sudo aureport --failed -ts this-week
+```
+
+---
+
+# **📚 PART 7: COMMAND CHEAT SHEET**
+
+## **ausearch (Search)**
+```bash
+# By key
+sudo ausearch -k ssh_keys
+
+# By time
+sudo ausearch -ts today
+sudo ausearch -ts 09:00 -te 17:00
+sudo ausearch -ts 01/15/2024
+
+# By user
+sudo ausearch -ui 1001
+sudo ausearch -ua john
+
+# By file
+sudo ausearch -f /etc/passwd
+
+# By syscall
+sudo ausearch -m execve
+
+# By exit code (failures)
+sudo ausearch -sv no
+
+# Combine filters
+sudo ausearch -k process_execution -ui 1001 -ts today
+```
+
+## **aureport (Reports)**
+```bash
+# Summary
+sudo aureport --summary
+
+# User activity
+sudo aureport -u
+
+# Login activity
+sudo aureport -l
+
+# File access
+sudo aureport -f
+
+# Command execution
+sudo aureport -x
+
+# Time range
+sudo aureport -ts today
+sudo aureport -ts yesterday
+
+# Failed events
+sudo aureport --failed
+```
+
+---
+
+# **🚀 PART 8: QUICK WINS**
+
+## **1. One-Liner Threat Hunt**
+```bash
+# Find everything suspicious in last 24h
+sudo ausearch -ts today | grep -E "lolbin|privilege_escalation|kernel_module|file_deletion|outbound_connection" | less
+```
+
+## **2. Live Suspicious Activity Monitor**
+```bash
+# Real-time alert console
+sudo tail -f /var/log/audit/audit.log | grep --color=always -E "FAILED|DENIED|chmod 777|root|sudo|SUID|C2|reverse shell"
+```
+
+## **3. Daily Email Report**
+```bash
+# Quick daily digest
+sudo aureport --summary -ts today | mail -s "Daily Audit Report $(date +%Y-%m-%d)" admin@localhost
+```
+
+## **4. Export for Forensics**
+```bash
+# Export today's events for analysis
+sudo ausearch -ts today --format text > ~/audit-export-$(date +%Y%m%d).txt
+```
+
+---
+
+# **✅ REMEMBER**
+
+| **If you want to...** | **Use this...** |
+|----------------------|-----------------|
+| See what's happening NOW | `sudo tail -f /var/log/audit/audit.log` |
+| Investigate an alert | `sudo ausearch -k [KEYNAME] -ts today` |
+| Check user activity | `sudo aureport -u` |
+| Find file changes | `sudo ausearch -f /path/to/file` |
+| Generate report | `sudo aureport --summary` |
+| Save evidence | `sudo ausearch -ts today > evidence.txt` |
+
+---
+
+**You now have a complete security monitoring system.** 
+
+The rules are doing their job silently in the background. Your job is to **query them when you need answers**. Start with `sudo audit-manager status` to confirm everything is working, then try `sudo audit-manager search process_execution` to see what commands people are running.
+
+**First thing to try:**
+```bash
+# See if your audit system is working
+sudo ausearch -k process_execution -ts today | head -20
+```

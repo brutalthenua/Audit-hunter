@@ -1,0 +1,565 @@
+Here is a comprehensive set of **auditd rules** covering all 20 categories you specified. These rules are designed for **Ubuntu 20.04/22.04/24.04 LTS** and follow **CIS Benchmark** and **STIG** standards.
+
+---
+
+# **Complete Ubuntu Auditd Ruleset**
+## **File Location:** `/etc/audit/rules.d/hardening.rules`
+## **Apply Rules:** `sudo augenrules --load`
+
+---
+
+## **1. FILE SYSTEM MONITORING**
+```bash
+# Critical system files - All access
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/sudoers -p wa -k sudoers
+-w /etc/sudoers.d/ -p wa -k sudoers
+
+# SSH and authentication
+-w /etc/ssh/sshd_config -p wa -k sshd_config
+-w /etc/ssh/ssh_config -p wa -k ssh_config
+-w /root/.ssh/ -p wa -k ssh_keys
+-w /home/*/.ssh/ -p wa -k ssh_keys
+
+# Web server (if applicable)
+-w /var/www/ -p wa -k web_content
+-w /etc/apache2/ -p wa -k apache
+-w /etc/nginx/ -p wa -k nginx
+
+# System binaries
+-w /bin/ -p wa -k system_binaries
+-w /sbin/ -p wa -k system_binaries
+-w /usr/bin/ -p wa -k system_binaries
+-w /usr/sbin/ -p wa -k system_binaries
+
+# Hidden file creation
+-w /tmp/ -p wa -k tmp_watch
+-w /var/tmp/ -p wa -k tmp_watch
+-w /dev/shm/ -p wa -k tmp_watch
+-w /home/ -p wa -k home_watch
+```
+
+---
+
+## **2. COMMAND EXECUTION MONITORING**
+```bash
+# Record all command executions
+-a always,exit -F arch=b64 -S execve -k process_execution
+-a always,exit -F arch=b32 -S execve -k process_execution
+
+# LOLBin monitoring (Living off the Land)
+-a always,exit -F path=/usr/bin/curl -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/wget -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/nc -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/netcat -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/ncat -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/socat -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/python -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/python3 -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/perl -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/ruby -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/php -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/bash -F perm=x -k lolbin_shell
+-a always,exit -F path=/usr/bin/sh -F perm=x -k lolbin_shell
+-a always,exit -F path=/usr/bin/dash -F perm=x -k lolbin_shell
+-a always,exit -F path=/usr/bin/zsh -F perm=x -k lolbin_shell
+-a always,exit -F path=/usr/bin/openssl -F perm=x -k lolbin
+-a always,exit -F path=/usr/bin/gcc -F perm=x -k compiler
+-a always,exit -F path=/usr/bin/g++ -F perm=x -k compiler
+-a always,exit -F path=/usr/bin/make -F perm=x -k compiler
+```
+
+---
+
+## **3. USER ACTIVITY TRACKING**
+```bash
+# Track specific high-risk users (adjust usernames as needed)
+# -a always,exit -F arch=b64 -S execve -F uid=1001 -k user_specific_activity
+# -a always,exit -F arch=b64 -S execve -F uid=1002 -k user_specific_activity
+
+# Track root activity
+-a always,exit -F arch=b64 -S execve -F euid=0 -k root_command
+
+# Track login UID (original user) activity
+-a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=-1 -k user_command
+
+# Track user identity changes
+-w /etc/passwd -p wa -k user_modify
+-w /etc/shadow -p wa -k user_modify
+-w /etc/group -p wa -k group_modify
+
+# User session activity
+-w /var/log/wtmp -p wa -k logins
+-w /var/log/btmp -p wa -k failed_logins
+-w /var/log/lastlog -p wa -k logins
+```
+
+---
+
+## **4. PRIVILEGE ESCALATION DETECTION**
+```bash
+# sudo and su monitoring
+-w /usr/bin/sudo -p x -k privilege_escalation
+-w /usr/bin/sudoedit -p x -k privilege_escalation
+-w /usr/bin/su -p x -k privilege_escalation
+-w /etc/sudoers -p wa -k privilege_escalation
+-w /etc/sudoers.d/ -p wa -k privilege_escalation
+
+# SUID/SGID execution
+-a always,exit -F arch=b64 -S execve -F uid=0 -F auid!=-1 -F auid!=0 -k root_command
+-a always,exit -F arch=b64 -S execve -F cap_effective&~0 -F auid!=-1 -k capability_escalation
+
+# Known SUID binaries (monitor for abuse)
+-a always,exit -F path=/usr/bin/pkexec -F perm=x -k pkexec
+-a always,exit -F path=/usr/bin/passwd -F perm=x -k passwd
+-a always,exit -F path=/usr/bin/chfn -F perm=x -k chfn
+-a always,exit -F path=/usr/bin/chsh -F perm=x -k chsh
+-a always,exit -F path=/usr/bin/gpasswd -F perm=x -k gpasswd
+-a always,exit -F path=/usr/bin/newgrp -F perm=x -k newgrp
+-a always,exit -F path=/usr/bin/at -F perm=x -k at
+-a always,exit -F path=/usr/bin/crontab -F perm=x -k crontab
+-a always,exit -F path=/usr/sbin/unix_chkpwd -F perm=x -k unix_chkpwd
+-a always,exit -F path=/usr/lib/dbus-1.0/dbus-daemon-launch-helper -F perm=x -k dbus
+-a always,exit -F path=/usr/lib/policykit-1/polkit-agent-helper-1 -F perm=x -k polkit
+```
+
+---
+
+## **5. SYSTEM CALL MONITORING (KERNEL LEVEL)**
+```bash
+# File deletion anti-forensics
+-a always,exit -F arch=b64 -S unlink -S unlinkat -S rmdir -S rename -S renameat -k file_deletion
+-a always,exit -F arch=b32 -S unlink -S unlinkat -S rmdir -S rename -S renameat -k file_deletion
+
+# Process injection/memory manipulation
+-a always,exit -F arch=b64 -S ptrace -k process_injection
+-a always,exit -F arch=b32 -S ptrace -k process_injection
+-a always,exit -F arch=b64 -S process_vm_readv -S process_vm_writev -k process_vm
+-a always,exit -F arch=b32 -S process_vm_readv -S process_vm_writev -k process_vm
+
+# Permission change monitoring
+-a always,exit -F arch=b64 -S chmod -S fchmod -S fchmodat -k perm_mod
+-a always,exit -F arch=b32 -S chmod -S fchmod -S fchmodat -k perm_mod
+-a always,exit -F arch=b64 -S chown -S fchown -S fchownat -S lchown -k perm_mod
+-a always,exit -F arch=b32 -S chown -S fchown -S fchownat -S lchown -k perm_mod
+
+# Mount operations
+-a always,exit -F arch=b64 -S mount -S umount2 -k mount
+-a always,exit -F arch=b32 -S mount -S umount2 -k mount
+```
+
+---
+
+## **6. PROCESS MONITORING**
+```bash
+# Process creation (already covered by execve)
+# Suspicious parent-child tracking
+-a always,exit -F arch=b64 -S fork -S vfork -S clone -S clone3 -k process_creation
+
+# Process memory modification
+-a always,exit -F arch=b64 -S mprotect -F a2=0x1 -k execmem
+-a always,exit -F arch=b64 -S mprotect -F a2=0x2 -k execmem
+-a always,exit -F arch=b64 -S mmap -F a2=0x7 -k execmem
+-a always,exit -F arch=b32 -S mprotect -F a2=0x1 -k execmem
+-a always,exit -F arch=b32 -S mprotect -F a2=0x2 -k execmem
+-a always,exit -F arch=b32 -S mmap -F a2=0x7 -k execmem
+```
+
+---
+
+## **7. AUTHENTICATION & LOGIN MONITORING**
+```bash
+# PAM and authentication
+-w /etc/pam.d/ -p wa -k pam
+-w /etc/security/ -p wa -k pam
+-w /etc/login.defs -p wa -k login
+-w /etc/securetty -p wa -k login
+
+# SSH monitoring
+-w /etc/ssh/sshd_config -p wa -k sshd
+-w /var/log/auth.log -p wa -k auth_log
+
+# User login/logout
+-a always,exit -F arch=b64 -S login -S logout -k user_login
+-a always,exit -F arch=b32 -S login -S logout -k user_login
+
+# Failed password attempts (via syscall)
+-a always,exit -F arch=b64 -S setuid -F success!=0 -k setuid_fail
+-a always,exit -F arch=b32 -S setuid -F success!=0 -k setuid_fail
+```
+
+---
+
+## **8. NETWORK ACTIVITY MONITORING**
+```bash
+# Socket connections (outbound)
+-a always,exit -F arch=b64 -S connect -k outbound_connection
+-a always,exit -F arch=b32 -S connect -k outbound_connection
+
+# Socket creation (listening)
+-a always,exit -F arch=b64 -S bind -k socket_bind
+-a always,exit -F arch=b32 -S bind -k socket_bind
+-a always,exit -F arch=b64 -S accept -S accept4 -k socket_accept
+-a always,exit -F arch=b32 -S accept -S accept4 -k socket_accept
+
+# Socket options (suspicious)
+-a always,exit -F arch=b64 -S setsockopt -k socket_options
+-a always,exit -F arch=b32 -S setsockopt -k socket_options
+
+# Network configuration changes
+-w /etc/network/ -p wa -k network_config
+-w /etc/netplan/ -p wa -k network_config
+-w /etc/hosts -p wa -k hosts
+-w /etc/hostname -p wa -k hostname
+-w /etc/resolv.conf -p wa -k resolv_conf
+```
+
+---
+
+## **9. KERNEL MODULE MONITORING**
+```bash
+# Kernel module loading/unloading
+-w /sbin/insmod -p x -k kernel_module
+-w /sbin/rmmod -p x -k kernel_module
+-w /sbin/modprobe -p x -k kernel_module
+-a always,exit -F arch=b64 -S init_module -S delete_module -k kernel_module
+-a always,exit -F arch=b32 -S init_module -S delete_module -k kernel_module
+
+# Kernel module blacklist
+-w /etc/modprobe.conf -p wa -k modprobe
+-w /etc/modprobe.d/ -p wa -k modprobe
+-w /etc/modules -p wa -k modules
+-w /etc/modules-load.d/ -p wa -k modules
+
+# Kernel parameters
+-w /etc/sysctl.conf -p wa -k sysctl
+-w /etc/sysctl.d/ -p wa -k sysctl
+-a always,exit -F arch=b64 -S sysctl -k sysctl
+-a always,exit -F arch=b32 -S sysctl -k sysctl
+```
+
+---
+
+## **10. TIME & CLOCK CHANGES (ANTI-FORENSICS)**
+```bash
+# Time modification (anti-forensics)
+-a always,exit -F arch=b64 -S adjtimex -S settimeofday -S clock_settime -k time_change
+-a always,exit -F arch=b32 -S adjtimex -S settimeofday -S clock_settime -k time_change
+-w /etc/localtime -p wa -k time_change
+-w /etc/timezone -p wa -k time_change
+
+# NTP tampering
+-w /etc/ntp.conf -p wa -k ntp
+-w /etc/chrony/ -p wa -k ntp
+-w /etc/systemd/timesyncd.conf -p wa -k ntp
+```
+
+---
+
+## **11. PERMISSION & OWNERSHIP CHANGES**
+```bash
+# SUID/SGID bit changes
+-a always,exit -F arch=b64 -S chmod -F a2&0x4000 -k suid_change
+-a always,exit -F arch=b32 -S chmod -F a2&0x4000 -k suid_change
+-a always,exit -F arch=b64 -S chmod -F a2&0x2000 -k sgid_change
+-a always,exit -F arch=b32 -S chmod -F a2&0x2000 -k sgid_change
+-a always,exit -F arch=b64 -S fchmodat -F a3&0x4000 -k suid_change
+-a always,exit -F arch=b32 -S fchmodat -F a3&0x4000 -k suid_change
+
+# Sticky bit changes
+-a always,exit -F arch=b64 -S chmod -F a2&0x1000 -k sticky_bit
+-a always,exit -F arch=b32 -S chmod -F a2&0x1000 -k sticky_bit
+
+# Chmod 777 (full permissions)
+-a always,exit -F arch=b64 -S chmod -F a2=0x1ff -k chmod_777
+-a always,exit -F arch=b32 -S chmod -F a2=0x1ff -k chmod_777
+```
+
+---
+
+## **12. CONFIGURATION CHANGES MONITORING**
+```bash
+# SSH configuration
+-w /etc/ssh/sshd_config -p wa -k ssh_config
+-w /etc/ssh/ssh_config -p wa -k ssh_config
+-w /etc/ssh/sshd_config.d/ -p wa -k ssh_config
+
+# PAM configuration
+-w /etc/pam.conf -p wa -k pam_config
+-w /etc/pam.d/ -p wa -k pam_config
+
+# Cron and scheduling
+-w /etc/crontab -p wa -k cron
+-w /etc/cron.d/ -p wa -k cron
+-w /etc/cron.daily/ -p wa -k cron
+-w /etc/cron.hourly/ -p wa -k cron
+-w /etc/cron.weekly/ -p wa -k cron
+-w /etc/cron.monthly/ -p wa -k cron
+-w /var/spool/cron/ -p wa -k cron
+
+# Systemd services
+-w /etc/systemd/ -p wa -k systemd
+-w /lib/systemd/ -p wa -k systemd
+-w /usr/lib/systemd/ -p wa -k systemd
+-w /etc/systemd/system -p wa -k systemd_unit
+
+# Host configuration
+-w /etc/hosts -p wa -k hosts
+-w /etc/hostname -p wa -k hostname
+-w /etc/resolv.conf -p wa -k resolv_conf
+
+# Firewall
+-w /etc/iptables/ -p wa -k iptables
+-w /etc/nftables.conf -p wa -k nftables
+-w /etc/ufw/ -p wa -k ufw
+```
+
+---
+
+## **13. SOFTWARE INSTALLATION & PACKAGE CHANGES**
+```bash
+# APT/Dpkg monitoring
+-w /usr/bin/apt-get -p x -k package_management
+-w /usr/bin/apt -p x -k package_management
+-w /usr/bin/dpkg -p x -k package_management
+-w /usr/bin/snap -p x -k snap
+-w /usr/bin/flatpak -p x -k flatpak
+
+# Package database
+-w /var/lib/dpkg/ -p wa -k dpkg_db
+-w /var/lib/apt/lists/ -p wa -k apt_db
+-w /var/cache/apt/ -p wa -k apt_cache
+
+# Source lists
+-w /etc/apt/sources.list -p wa -k apt_sources
+-w /etc/apt/sources.list.d/ -p wa -k apt_sources
+```
+
+---
+
+## **14. DEVICE & HARDWARE ACCESS**
+```bash
+# USB storage detection
+-a always,exit -F arch=b64 -S mount -F fstype=vfat -k usb_mount
+-a always,exit -F arch=b32 -S mount -F fstype=vfat -k usb_mount
+-a always,exit -F arch=b64 -S mount -F fstype=exfat -k usb_mount
+-a always,exit -F arch=b32 -S mount -F fstype=exfat -k usb_mount
+-a always,exit -F arch=b64 -S mount -F fstype=ntfs -k usb_mount
+-a always,exit -F arch=b32 -S mount -F fstype=ntfs -k usb_mount
+
+-w /media/ -p wa -k removable_media
+-w /mnt/ -p wa -k removable_media
+
+# Module loading for USB storage
+-w /sbin/modprobe -p x -F success=1 -F path=/sbin/modprobe -k usb_driver
+-a always,exit -F arch=b64 -S init_module -F key=usb_driver -F success=1 -F dir=/lib/modules/ -F a0~=usb-storage -F a0~=usbhid
+-a always,exit -F arch=b32 -S init_module -F key=usb_driver -F success=1 -F dir=/lib/modules/ -F a0~=usb-storage -F a0~=usbhid
+```
+
+---
+
+## **15. LOG TAMPERING DETECTION**
+```bash
+# Audit log protection (MUST BE FIRST RULE)
+-w /var/log/audit/ -p wa -k audit_log
+-w /var/log/audit/audit.log -p wa -k audit_log
+
+# System logs
+-w /var/log/syslog -p wa -k syslog
+-w /var/log/messages -p wa -k syslog
+-w /var/log/kern.log -p wa -k kern_log
+-w /var/log/dmesg -p wa -k dmesg
+-w /var/log/auth.log -p wa -k auth_log
+-w /var/log/secure -p wa -k secure_log
+-w /var/log/daemon.log -p wa -k daemon_log
+
+# User history tampering
+-w /root/.bash_history -p wa -k bash_history
+-w /home/*/.bash_history -p wa -k bash_history
+-w /root/.zsh_history -p wa -k zsh_history
+-w /home/*/.zsh_history -p wa -k zsh_history
+-w /root/.sh_history -p wa -k sh_history
+-w /home/*/.sh_history -p wa -k sh_history
+
+# Log rotation tampering
+-w /etc/logrotate.conf -p wa -k logrotate
+-w /etc/logrotate.d/ -p wa -k logrotate
+```
+
+---
+
+## **16. PERSISTENCE MECHANISM DETECTION**
+```bash
+# Cron persistence (already covered in section 12)
+# Additional cron monitoring
+-a always,exit -F path=/usr/bin/crontab -F perm=x -k cron_execution
+-w /etc/anacrontab -p wa -k anacron
+
+# Systemd persistence (already covered)
+# Startup scripts
+-w /etc/rc.local -p wa -k rc_local
+-w /etc/rc0.d/ -p wa -k rc
+-w /etc/rc1.d/ -p wa -k rc
+-w /etc/rc2.d/ -p wa -k rc
+-w /etc/rc3.d/ -p wa -k rc
+-w /etc/rc4.d/ -p wa -k rc
+-w /etc/rc5.d/ -p wa -k rc
+-w /etc/rc6.d/ -p wa -k rc
+-w /etc/init.d/ -p wa -k init_d
+-w /etc/init/ -p wa -k upstart
+
+# Profile scripts (auto-execution)
+-w /etc/profile -p wa -k profile
+-w /etc/profile.d/ -p wa -k profile
+-w /etc/bash.bashrc -p wa -k bashrc
+-w /root/.bashrc -p wa -k bashrc
+-w /root/.profile -p wa -k profile
+-w /home/*/.bashrc -p wa -k bashrc
+-w /home/*/.profile -p wa -k profile
+
+# Autostart directories
+-w /etc/xdg/autostart/ -p wa -k autostart
+-w /home/*/.config/autostart/ -p wa -k autostart
+-w /root/.config/autostart/ -p wa -k autostart
+```
+
+---
+
+## **17. CAPABILITY & SECURITY POLICY CHANGES**
+```bash
+# AppArmor monitoring
+-w /etc/apparmor/ -p wa -k apparmor
+-w /etc/apparmor.d/ -p wa -k apparmor
+-w /sys/kernel/security/apparmor/ -p wa -k apparmor_status
+-a always,exit -F arch=b64 -S aa_change_profile -k apparmor
+-a always,exit -F arch=b32 -S aa_change_profile -k apparmor
+
+# SELinux (if installed)
+-w /etc/selinux/ -p wa -k selinux
+
+# Capabilities
+-a always,exit -F arch=b64 -S capset -k capabilities
+-a always,exit -F arch=b32 -S capset -k capabilities
+-a always,exit -F arch=b64 -S capget -k capabilities
+-a always,exit -F arch=b32 -S capget -k capabilities
+
+# Secure boot
+-w /etc/secureboot/ -p wa -k secureboot
+-w /sys/firmware/efi/ -p wa -k efi
+```
+
+---
+
+## **18. IPC & MEMORY ACTIVITY MONITORING**
+```bash
+# Shared memory operations
+-a always,exit -F arch=b64 -S shmget -S shmat -S shmctl -S shmdt -k shared_memory
+-a always,exit -F arch=b32 -S shmget -S shmat -S shmctl -S shmdt -k shared_memory
+
+# Semaphores
+-a always,exit -F arch=b64 -S semget -S semop -S semctl -k semaphore
+-a always,exit -F arch=b32 -S semget -S semop -S semctl -k semaphore
+
+# Message queues
+-a always,exit -F arch=b64 -S msgget -S msgsnd -S msgrcv -S msgctl -k message_queue
+-a always,exit -F arch=b32 -S msgget -S msgsnd -S msgrcv -S msgctl -k message_queue
+
+# Futex (synchronization, potential for exploit)
+-a always,exit -F arch=b64 -S futex -k futex
+-a always,exit -F arch=b32 -S futex -k futex
+```
+
+---
+
+## **19. CONTAINER & NAMESPACE MONITORING**
+```bash
+# Docker daemon and client
+-w /usr/bin/docker -p x -k docker
+-w /usr/bin/dockerd -p x -k docker
+-w /var/run/docker.sock -p wa -k docker_socket
+-w /etc/docker/ -p wa -k docker_config
+
+# Container runtimes
+-w /usr/bin/runc -p x -k runc
+-w /usr/bin/containerd -p x -k containerd
+-w /usr/bin/ctr -p x -k containerd
+-w /usr/bin/nerdctl -p x -k nerdctl
+
+# LXC/LXD
+-w /usr/bin/lxc -p x -k lxc
+-w /usr/bin/lxd -p x -k lxd
+-w /var/lib/lxd/ -p wa -k lxd
+
+# Namespace operations (potential escape)
+-a always,exit -F arch=b64 -S unshare -S setns -k namespace
+-a always,exit -F arch=b32 -S unshare -S setns -k namespace
+
+# Cgroup operations
+-a always,exit -F arch=b64 -S cgroup_init -k cgroup
+-a always,exit -F arch=b32 -S cgroup_init -k cgroup
+-w /sys/fs/cgroup/ -p wa -k cgroup
+```
+
+---
+
+## **20. FORENSICS & COMPLIANCE LOGGING**
+```bash
+# Ensure audit log configuration is immutable
+-w /etc/audit/ -p wa -k audit_config
+-w /etc/audit/auditd.conf -p wa -k audit_config
+-w /etc/audit/rules.d/ -p wa -k audit_rules
+-w /etc/libaudit.conf -p wa -k audit_config
+
+# Ensure maximum log size and retention
+-b 8192
+-f 1
+-e 2
+```
+
+---
+
+# **IMPORTANT: Finalize with Immutable Rule**
+```bash
+# Make audit configuration immutable
+# THIS MUST BE THE LAST RULE - DO NOT PLACE ANY RULES AFTER THIS
+-e 2
+```
+
+---
+
+## **Deployment Instructions**
+
+1. **Save the rules:**
+```bash
+sudo nano /etc/audit/rules.d/hardening.rules
+```
+
+2. **Merge and load:**
+```bash
+sudo augenrules --load
+```
+
+3. **Verify:**
+```bash
+sudo auditctl -l
+sudo auditctl -s
+```
+
+4. **Generate report:**
+```bash
+sudo aureport --summary
+```
+
+---
+
+## **Key Adjustments Before Production**
+
+1. **User-specific monitoring:** Uncomment and modify the `uid=` rules in Section 3 for specific high-risk users
+2. **Web server paths:** Adjust if Apache/nginx are not used or are in different locations
+3. **Container monitoring:** Adjust if using different container runtimes
+4. **Performance tuning:** Consider increasing `-b 8192` if you experience backlog issues on busy systems
+
+This ruleset provides **comprehensive coverage** across all 20 categories while maintaining **performance efficiency** through careful use of syscall auditing and path-based monitoring.

@@ -1,0 +1,33 @@
+# Check status
+
+sudo ./audit-manager.py status
+
+# Deploy rules
+sudo ./audit-manager.py apply
+
+# Search SSH key events
+sudo ./audit-manager.py search -k ssh_keys -t today
+
+# Generate daily report
+sudo ./audit-manager.py report daily
+
+# Investigate SSH incident
+sudo ./audit-manager.py incident ssh
+
+# Live monitor
+sudo ./audit-manager.py monitor
+
+# Check alerts
+sudo ./audit-manager.py alerts
+
+# Export events as JSON
+sudo ./audit-manager.py export -f json
+
+# Investigate user
+sudo ./audit-manager.py investigate --user john
+
+# Quick threat hunt
+sudo ./audit-manager.py hunt
+
+# Morning checklist
+sudo ./audit-manager.py checklist
